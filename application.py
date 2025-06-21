@@ -107,6 +107,12 @@ class StatsOverlay(QWidget):
 
     # This event is called when the widget is shown.
     def showEvent(self, event):
+        # Disconnect any existing connections to avoid conflicts
+        try:
+            self.animation.finished.disconnect()
+        except:
+            pass  # No connection to disconnect
+            
         # Configure and start the fade-in animation.
         self.animation.setStartValue(0.0)
         self.animation.setEndValue(1.0)
@@ -115,6 +121,12 @@ class StatsOverlay(QWidget):
 
     # This method is called to hide the overlay.
     def hide_overlay(self):
+        # Disconnect any existing connections to avoid multiple connections
+        try:
+            self.animation.finished.disconnect()
+        except:
+            pass  # No connection to disconnect
+        
         # Configure and start the fade-out animation.
         self.animation.setStartValue(1.0)
         self.animation.setEndValue(0.0)
@@ -139,7 +151,7 @@ class PomodoroTimer(QFrame):
         layout.setSpacing(8)
 
         # Title label
-        title_label = QLabel("Pomodoro Timer")
+        title_label = QLabel("Lock in timer")
         title_label.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title_label.setStyleSheet("color: #888888; margin-bottom: 3px;")
@@ -524,14 +536,18 @@ class MyWindow(QMainWindow):
             self.stats_overlay.hide_overlay()
         else:
             # Set the geometry of the overlay to match the central widget's geometry.
-            self.stats_overlay.setGeometry(self.centralWidget().geometry())
+            central_widget = self.centralWidget()
+            if central_widget:
+                self.stats_overlay.setGeometry(central_widget.geometry())
             self.stats_overlay.show()
 
     # This event is called when the main window is resized.
     def resizeEvent(self, event):
         # If the overlay is visible, resize it to match the new window size.
         if hasattr(self, 'stats_overlay') and self.stats_overlay.isVisible():
-            self.stats_overlay.setGeometry(self.centralWidget().geometry())
+            central_widget = self.centralWidget()
+            if central_widget:
+                self.stats_overlay.setGeometry(central_widget.geometry())
         super().resizeEvent(event)
 
 # Main function to run the application.
