@@ -3,13 +3,92 @@ from PyQt6 import QtWidgets
 from PyQt6.QtCore import Qt, QSize, QPropertyAnimation, QEasingCurve, QTimer
 from PyQt6.QtGui import QFont, QIcon, QPixmap, QPainter, QColor, QFontDatabase
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QLabel, QPushButton,
-                             QWidget, QVBoxLayout, QHBoxLayout, QFrame, QGraphicsOpacityEffect, QGridLayout, QCheckBox)
+                             QWidget, QVBoxLayout, QHBoxLayout, QFrame, QGraphicsOpacityEffect, 
+                             QGridLayout, QCheckBox, QScrollArea, QLineEdit, QDialog, QMenu)
 import sys
+import os
+import json
+from datetime import datetime
 
+# Statistics management class
+class StatsManager:
+    def __init__(self):
+        self.stats_file = os.path.join(os.path.dirname(__file__), 'stats.json')
+        self.stats = self.load_stats()
+    
+    def load_stats(self):
+        """Load statistics from JSON file"""
+        try:
+            if os.path.exists(self.stats_file):
+                with open(self.stats_file, 'r', encoding='utf-8') as file:
+                    stats = json.load(file)
+                    # Reset daily stats if it's a new day
+                    today = datetime.now().strftime("%Y-%m-%d")
+                    if stats.get('last_updated') != today:
+                        stats['tasks_completed_today'] = 0
+                        stats['last_updated'] = today
+                        self.save_stats(stats)
+                    return stats
+            else:
+                return {
+                    "tasks_completed_today": 0,
+                    "pomodoro_time_spent": 0,
+                    "last_updated": datetime.now().strftime("%Y-%m-%d"),
+                    "total_tasks_completed": 0,
+                    "total_pomodoro_sessions": 0,
+                    "focus_streak": 0,
+                    "break_time": 0
+                }
+        except Exception as e:
+            print(f"Error loading stats: {e}")
+            return {"tasks_completed_today": 0, "pomodoro_time_spent": 0, "last_updated": datetime.now().strftime("%Y-%m-%d")}
+    
+    def save_stats(self, stats=None):
+        """Save statistics to JSON file"""
+        try:
+            if stats is None:
+                stats = self.stats
+            with open(self.stats_file, 'w', encoding='utf-8') as file:
+                json.dump(stats, file, indent=2)
+        except Exception as e:
+            print(f"Error saving stats: {e}")
+    
+    def increment_tasks_completed(self):
+        """Increment the number of tasks completed today"""
+        self.stats['tasks_completed_today'] += 1
+        self.stats['total_tasks_completed'] = self.stats.get('total_tasks_completed', 0) + 1
+        self.save_stats()
+    
+    def add_pomodoro_time(self, minutes):
+        """Add time spent in pomodoro sessions"""
+        self.stats['pomodoro_time_spent'] += minutes
+        self.save_stats()
+    
+    def complete_pomodoro_session(self):
+        """Mark a complete pomodoro session"""
+        self.stats['total_pomodoro_sessions'] = self.stats.get('total_pomodoro_sessions', 0) + 1
+        self.stats['focus_streak'] = self.stats.get('focus_streak', 0) + 1
+        self.save_stats()
+    
+    def get_stats_summary(self):
+        """Get formatted statistics summary"""
+        focus_time = self.stats.get('pomodoro_time_spent', 0)
+        focus_hours = focus_time // 60
+        focus_mins = focus_time % 60
+        
+        return {
+            "Tasks Completed Today": str(self.stats.get('tasks_completed_today', 0)),
+            "Focus Time Today": f"{focus_hours}h {focus_mins}m" if focus_hours > 0 else f"{focus_mins}m",
+            "Total Tasks Completed": str(self.stats.get('total_tasks_completed', 0)),
+            "Pomodoro Sessions": str(self.stats.get('total_pomodoro_sessions', 0)),
+            "Current Focus Streak": str(self.stats.get('focus_streak', 0)),
+            "Estimated Break Time": f"{self.stats.get('break_time', 0)}m"
+        }
 # Defines the overlay widget that displays statistics.
 class StatsOverlay(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, stats_manager=None):
         super().__init__(parent)
+        self.stats_manager = stats_manager or StatsManager()
         # Set window flags to make the overlay frameless and stay on top of other windows.
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         # Make the background of the widget translucent to see the window behind it.
@@ -43,21 +122,13 @@ class StatsOverlay(QWidget):
         title = QLabel("Overall Statistics")
         title.setFont(QFont("Segoe UI", 28, QFont.Weight.Bold))
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
-
-        # Create a grid layout for the statistics.
+        layout.addWidget(title)        # Create a grid layout for the statistics.
         stats_layout = QGridLayout()
         stats_layout.setSpacing(20)
         stats_layout.setColumnStretch(1, 1)  # Make the value column stretchable.
 
-        # A dictionary of placeholder statistics.
-        stats = {
-            "Stress Levels": "Low",
-            "Posture Analysis": "Good",
-            "Emotion Timeline": "Happy -> Calm -> Focused",
-            "Focus Time": "45 min",
-            "Break Time": "10 min"
-        }
+        # Get real statistics from StatsManager
+        stats = self.stats_manager.get_stats_summary()
 
         # Loop through the stats dictionary and create labels for each item.
         row = 0
@@ -135,8 +206,9 @@ class StatsOverlay(QWidget):
         self.animation.start()
 
 class PomodoroTimer(QFrame):
-    def __init__(self):
+    def __init__(self, stats_manager=None):
         super().__init__()
+        self.stats_manager = stats_manager or StatsManager()
         self.setStyleSheet('''
             QFrame {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -227,6 +299,8 @@ class PomodoroTimer(QFrame):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_time)
         self.time_left = 25 * 60
+        self.original_time = 25 * 60
+        self.was_running = False
 
     def update_time(self):
         self.time_left -= 1
@@ -235,107 +309,363 @@ class PomodoroTimer(QFrame):
         if self.time_left == 0:
             self.timer.stop()
             self.play_pause_button.setText("▶")
+            # Track completed pomodoro session
+            self.stats_manager.complete_pomodoro_session()
+            self.stats_manager.add_pomodoro_time(self.original_time // 60)
 
     def start_stop(self):
         if self.timer.isActive():
             self.timer.stop()
             self.play_pause_button.setText("▶")
+            self.was_running = False
         else:
             self.timer.start(1000)
             self.play_pause_button.setText("⏸")
+            self.was_running = True
 
     def reset(self):
         self.timer.stop()
-        self.time_left = 25 * 60
+        self.time_left = self.original_time
         self.time_label.setText("25:00")
         self.play_pause_button.setText("▶")
+        self.was_running = False
 
 
 class TasksWidget(QFrame):
-    def __init__(self):
+    def __init__(self, stats_manager=None):
         super().__init__()
+        self.tasks = []
+        self.stats_manager = stats_manager or StatsManager()
+        self.tasks_file = os.path.join(os.path.dirname(__file__), 'tasks.txt')
+        
         self.setStyleSheet('''
             QFrame {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 #2a2a2a, stop:1 #1a1a1a);
                 border: 2px solid #404040;
-                padding: 8px;
                 border-radius: 12px;
-                max-width: 180px;
-                max-height: 180px;
+                max-width: 220px;
             }
         ''')
-        layout = QVBoxLayout(self)
-        layout.setSpacing(4)
-
+        
+        # Main layout
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(8, 8, 8, 8)
+        main_layout.setSpacing(6)
+        
+        # Title
         title = QLabel("Today's Tasks")
-        title.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        title.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
         title.setStyleSheet('''
             color: #ffffff;
-            padding: 4px;
+            padding: 6px;
             background: rgba(100, 150, 255, 0.2);
-            border-radius: 4px;
+            border-radius: 6px;
             border-left: 3px solid #6496ff;
         ''')
-        layout.addWidget(title)
-
-        tasks = [
-            ("Project work", False),
-            ("Code review", True),
-            ("Meeting", False)
-        ]
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        main_layout.addWidget(title)
         
-        for task_text, completed in tasks:
-            task_container = QFrame()
-            task_container.setStyleSheet('''
-                QFrame {
-                    background: rgba(255, 255, 255, 0.05);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 4px;
-                    padding: 5px;
-                    margin: 1px;
-                    min-height: 20px;
-                    max-height: 24px;
-                }
-                QFrame:hover {
-                    background: rgba(255, 255, 255, 0.1);
-                }
-            ''')
+        # Scroll area for tasks
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setMinimumHeight(120)
+        self.scroll_area.setMaximumHeight(140)
+        self.scroll_area.setStyleSheet('''
+            QScrollArea {
+                border: none;
+                background-color: transparent;
+            }
+            QScrollBar:vertical {
+                background-color: #2a2a2a;
+                width: 8px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: #555;
+                border-radius: 4px;
+                min-height: 20px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: #666;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                border: none;
+                background: none;
+            }
+        ''')
+        
+        # Widget to contain tasks
+        self.tasks_container = QWidget()
+        self.tasks_layout = QVBoxLayout(self.tasks_container)
+        self.tasks_layout.setContentsMargins(2, 2, 2, 2)
+        self.tasks_layout.setSpacing(3)
+        
+        # Load tasks from file
+        self.load_tasks()
+        
+        # Add stretch to push tasks to top
+        self.tasks_layout.addStretch()
+        
+        self.scroll_area.setWidget(self.tasks_container)
+        main_layout.addWidget(self.scroll_area)
+        
+        # Plus button to add new tasks
+        self.plus_button = QPushButton("+")
+        self.plus_button.setFixedSize(28, 28)
+        self.plus_button.clicked.connect(self.add_new_task)
+        self.plus_button.setStyleSheet('''
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                border: none;
+                border-radius: 14px;
+                font-size: 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QPushButton:pressed {
+                background-color: #3d8b40;
+            }
+        ''')
+        
+        # Center the plus button
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        button_layout.addWidget(self.plus_button)
+        button_layout.addStretch()
+        
+        main_layout.addLayout(button_layout)
+    
+    def load_tasks(self):
+        """Load tasks from the text file"""
+        try:
+            if os.path.exists(self.tasks_file):
+                with open(self.tasks_file, 'r', encoding='utf-8') as file:
+                    for line in file:
+                        line = line.strip()
+                        if line and '|' in line:
+                            text, completed_str = line.split('|', 1)
+                            completed = completed_str.lower() == 'true'
+                            # Only add incomplete tasks to the widget
+                            if not completed:
+                                self.add_task_to_widget(text, completed)
+            else:
+                # Create default tasks if file doesn't exist
+                default_tasks = [
+                    ("Project work", False),
+                    ("Code review", False),
+                    ("Meeting", False)
+                ]
+                for text, completed in default_tasks:
+                    self.add_task_to_widget(text, completed)
+                self.save_tasks()
+        except Exception as e:
+            print(f"Error loading tasks: {e}")
+    
+    def save_tasks(self):
+        """Save all tasks to the text file"""
+        try:
+            with open(self.tasks_file, 'w', encoding='utf-8') as file:
+                for text, checkbox, _ in self.tasks:
+                    completed = checkbox.isChecked()
+                    file.write(f"{text}|{completed}\n")
+        except Exception as e:
+            print(f"Error saving tasks: {e}")
+    
+    def add_task_to_widget(self, text, completed=False):
+        """Add a task to the widget (internal method)"""
+        task_container = QFrame()
+        task_container.setStyleSheet('''
+            QFrame {
+                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 4px;
+                padding: 4px;
+                margin: 1px;
+                min-height: 24px;
+                max-height: 28px;
+            }
+            QFrame:hover {
+                background: rgba(255, 255, 255, 0.1);
+            }
+        ''')
+        
+        task_layout = QHBoxLayout(task_container)
+        task_layout.setContentsMargins(4, 2, 4, 2)
+        task_layout.setSpacing(6)
+        
+        checkbox = QCheckBox(text)
+        checkbox.setChecked(completed)
+        checkbox.setFont(QFont("Segoe UI", 9))
+        checkbox.setStyleSheet(f'''
+            QCheckBox {{
+                color: {"#888888" if completed else "#ffffff"};
+                text-decoration: {"line-through" if completed else "none"};
+                spacing: 6px;
+            }}
+            QCheckBox::indicator {{
+                width: 12px;
+                height: 12px;
+                border-radius: 6px;
+                border: 2px solid #6496ff;
+                background-color: transparent;
+            }}
+            QCheckBox::indicator:checked {{
+                background-color: #6496ff;
+                border: 2px solid #6496ff;
+            }}
+        ''')
+        
+        # Connect checkbox state change to removal function
+        checkbox.stateChanged.connect(lambda state, task_text=text: self.on_task_checked(task_text, state))
+        
+        task_layout.addWidget(checkbox)
+        
+        # Insert before the stretch at the end
+        insert_index = self.tasks_layout.count() - 1
+        self.tasks_layout.insertWidget(insert_index, task_container)
+        self.tasks.append((text, checkbox, task_container))
+    
+    def add_task(self, text, completed=False):
+        """Add a new task and save to file"""
+        self.add_task_to_widget(text, completed)
+        self.save_tasks()
+    
+    def add_new_task(self):
+        """Open dialog to add a new task"""
+        dialog = AddTaskDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            task_text = dialog.get_task_text()
+            if task_text:
+                self.add_task(task_text, False)
+    def on_task_checked(self, task_text, state):
+        """Handle task completion - remove from widget and save to file"""
+        if state == Qt.CheckState.Checked.value:  # Task is completed
+            # Track completed task in statistics
+            self.stats_manager.increment_tasks_completed()
             
-            task_layout = QHBoxLayout(task_container)
-            task_layout.setContentsMargins(6, 3, 6, 3)
-            task_layout.setSpacing(6)
+            # Remove from widget
+            for i, (text, checkbox, container) in enumerate(self.tasks):
+                if text == task_text:
+                    # Remove from layout
+                    self.tasks_layout.removeWidget(container)
+                    container.setParent(None)
+                    container.deleteLater()
+                    
+                    # Remove from tasks list
+                    del self.tasks[i]
+                    break
             
-            checkbox = QCheckBox(task_text)
-            checkbox.setChecked(completed)
-            checkbox.setFont(QFont("Segoe UI", 8))
-            checkbox.setStyleSheet(f'''
-                QCheckBox {{
-                    color: {"#888888" if completed else "#ffffff"};
-                    text-decoration: {"line-through" if completed else "none"};
-                    spacing: 8px;
-                }}
-                QCheckBox::indicator {{
-                    width: 12px;
-                    height: 14px;
-                    border-radius: 6px;
-                    border: 2px solid #6496ff;
-                    background-color: transparent;
-                }}
-                QCheckBox::indicator:checked {{
-                    background-color: #6496ff;
-                    border: 2px solid #6496ff;
-                }}
-            ''')
-            
-            task_layout.addWidget(checkbox)
-            
-            layout.addWidget(task_container)
+            # Save updated tasks to file
+            self.save_tasks()
+    
+    def remove_task(self, task_text):
+        """Remove a task completely from both widget and file"""
+        for i, (text, checkbox, container) in enumerate(self.tasks):
+            if text == task_text:
+                # Remove from layout
+                self.tasks_layout.removeWidget(container)
+                container.setParent(None)
+                container.deleteLater()
+                
+                # Remove from tasks list
+                del self.tasks[i]
+                break
+        
+        # Save updated tasks to file
+        self.save_tasks()
+
+class AddTaskDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Add New Task")
+        self.setFixedSize(300, 120)
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #2b2b2b;
+                border: 2px solid #4a4a4a;
+                border-radius: 8px;
+            }
+            QLineEdit {
+                background-color: #3a3a3a;
+                border: 1px solid #555;
+                border-radius: 4px;
+                padding: 8px;
+                color: #ffffff;
+                font-size: 14px;
+            }
+            QLineEdit:focus {
+                border: 2px solid #007acc;
+            }
+            QPushButton {
+                background-color: #007acc;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #005a9e;
+            }
+            QPushButton:pressed {
+                background-color: #004080;
+            }
+        """)
+        
+        layout = QVBoxLayout()
+        
+        self.task_input = QLineEdit()
+        self.task_input.setPlaceholderText("Enter task description...")
+        layout.addWidget(self.task_input)
+        
+        button_layout = QHBoxLayout()
+        
+        self.add_button = QPushButton("Add")
+        self.add_button.clicked.connect(self.accept)
+        
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.clicked.connect(self.reject)
+        self.cancel_button.setStyleSheet("""
+            QPushButton {
+                background-color: #666;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #555;
+            }
+        """)
+        
+        button_layout.addWidget(self.cancel_button)
+        button_layout.addWidget(self.add_button)
+        
+        layout.addLayout(button_layout)
+        self.setLayout(layout)
+        
+        # Focus on input field and connect Enter key
+        self.task_input.setFocus()
+        self.task_input.returnPressed.connect(self.accept)
+    
+    def get_task_text(self):
+        return self.task_input.text().strip()
 
 # Defines the main application window.
 class MyWindow(QMainWindow):
     def __init__(self):
         super(MyWindow, self).__init__()
+        # Initialize stats manager first
+        self.stats_manager = StatsManager()
+        
         # Set the window title and initial geometry.
         self.setWindowTitle("Emotion Detector Pro")
         self.setGeometry(300, 50, 900, 600)
@@ -363,16 +693,14 @@ class MyWindow(QMainWindow):
         # Create the main vertical layout.
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(15, 10, 15, 15)
-        main_layout.setSpacing(15)
-
-        # Create a top bar layout for the menu button.
+        main_layout.setSpacing(15)        # Create a top bar layout for the menu button.
         top_bar = QHBoxLayout()
-        menu_button = QPushButton()
+        self.menu_button = QPushButton()
         # Set the icon for the menu button.
-        menu_button.setIcon(QIcon(self.create_menu_icon()))
-        menu_button.setIconSize(QSize(32, 32))
+        self.menu_button.setIcon(QIcon(self.create_menu_icon()))
+        self.menu_button.setIconSize(QSize(32, 32))
         # Style the menu button.
-        menu_button.setStyleSheet('''
+        self.menu_button.setStyleSheet('''
             QPushButton { 
                 border: none; 
                 background: rgba(255, 255, 255, 0.1);
@@ -385,9 +713,9 @@ class MyWindow(QMainWindow):
                 background: rgba(255, 255, 255, 0.3);
             }
         ''')
-        menu_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        # Connect the button's clicked signal to toggle the stats overlay.
-        menu_button.clicked.connect(self.toggle_stats_overlay)
+        self.menu_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        # Connect the button's clicked signal to show the hamburger menu.
+        self.menu_button.clicked.connect(self.show_hamburger_menu)
         
         # Add title to top bar
         title_label = QLabel("Emotion Detector Pro")
@@ -395,8 +723,7 @@ class MyWindow(QMainWindow):
         title_label.setStyleSheet('''
             color: #ffffff;
         ''')
-        
-        top_bar.addWidget(menu_button, alignment=Qt.AlignmentFlag.AlignLeft)
+        top_bar.addWidget(self.menu_button, alignment=Qt.AlignmentFlag.AlignLeft)
         top_bar.addStretch()
         top_bar.addWidget(title_label, alignment=Qt.AlignmentFlag.AlignCenter)
         top_bar.addStretch()
@@ -494,18 +821,17 @@ class MyWindow(QMainWindow):
         side_panel_container.setLayout(side_panel_layout)
         side_panel_container.setMaximumWidth(200)
         
-        content_layout.addWidget(side_panel_container, stretch=1)
-
-        self.pomodoro_timer = PomodoroTimer()
+        content_layout.addWidget(side_panel_container, stretch=1)        
+        self.pomodoro_timer = PomodoroTimer(self.stats_manager)
         self.pomodoro_timer.play_pause_button.clicked.connect(self.pomodoro_timer.start_stop)
         self.pomodoro_timer.reset_button.clicked.connect(self.pomodoro_timer.reset)
         side_panel_layout.addWidget(self.pomodoro_timer)
 
-        self.tasks_widget = TasksWidget()
+        self.tasks_widget = TasksWidget(self.stats_manager)
         side_panel_layout.addWidget(self.tasks_widget)
         
         # Create an instance of the stats overlay and hide it initially.
-        self.stats_overlay = StatsOverlay(self)
+        self.stats_overlay = StatsOverlay(self, self.stats_manager)
         self.stats_overlay.hide()
         
         # Add some spacing at the bottom
@@ -523,23 +849,81 @@ class MyWindow(QMainWindow):
         pen.setWidth(3)
         pen.setColor(QColor("white"))
         painter.setPen(pen)
-        # Draw three horizontal lines to represent a menu icon.
-        painter.drawLine(4, 8, 28, 8)
+        # Draw three horizontal lines to represent a menu icon.        painter.drawLine(4, 8, 28, 8)
         painter.drawLine(4, 16, 28, 16)
         painter.drawLine(4, 24, 28, 24)
         painter.end()
         return pixmap
+
+    # Shows the hamburger menu with options
+    def show_hamburger_menu(self):
+        menu = QMenu(self)
+        menu.setStyleSheet('''
+            QMenu {
+                background-color: #2b2b2b;
+                border: 2px solid #4a4a4a;
+                border-radius: 8px;
+                padding: 4px;
+                color: white;
+                font-size: 14px;
+            }
+            QMenu::item {
+                background-color: transparent;
+                padding: 8px 16px;
+                border-radius: 4px;
+                margin: 2px;
+            }
+            QMenu::item:selected {
+                background-color: #007acc;
+            }
+            QMenu::item:pressed {
+                background-color: #005a9e;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: #555;
+                margin: 4px 8px;
+            }
+        ''')
+        
+        # Stats action
+        stats_action = menu.addAction("📊 View Statistics")
+        stats_action.triggered.connect(self.show_stats_overlay)
+        
+        # Add separator
+        menu.addSeparator()
+        
+        # Close action (minimize to tray or hide)
+        close_action = menu.addAction("🗕 Minimize")
+        close_action.triggered.connect(self.showMinimized)
+        
+        # Quit action
+        quit_action = menu.addAction("❌ Quit Application")
+        quit_action.triggered.connect(self.close_application)
+        
+        # Show menu at button position
+        button_rect = self.menu_button.geometry()
+        menu_pos = self.menu_button.mapToGlobal(button_rect.bottomLeft())
+        menu.exec(menu_pos)
+    
+    # Show the statistics overlay
+    def show_stats_overlay(self):
+        # Set the geometry of the overlay to match the central widget's geometry.
+        central_widget = self.centralWidget()
+        if central_widget:
+            self.stats_overlay.setGeometry(central_widget.geometry())
+        self.stats_overlay.show()
+    
+    # Close the application
+    def close_application(self):
+        self.close()
 
     # Shows or hides the statistics overlay.
     def toggle_stats_overlay(self):
         if self.stats_overlay.isVisible():
             self.stats_overlay.hide_overlay()
         else:
-            # Set the geometry of the overlay to match the central widget's geometry.
-            central_widget = self.centralWidget()
-            if central_widget:
-                self.stats_overlay.setGeometry(central_widget.geometry())
-            self.stats_overlay.show()
+            self.show_stats_overlay()
 
     # This event is called when the main window is resized.
     def resizeEvent(self, event):
