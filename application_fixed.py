@@ -85,10 +85,12 @@ class StatsOverlay(QWidget):
                 padding: 15px 30px;
                 border-radius: 12px;
                 color: white;
-                font-weight: bold;            }
+                font-weight: bold;
+            }
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 #ff5555, stop:1 #dd4444);
+                transform: scale(1.05);
             }
             QPushButton:pressed {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -250,19 +252,18 @@ class TasksWidget(QFrame):
                 padding: 8px;
                 border-radius: 12px;
                 max-width: 180px;
-                max-height: 180px;
             }
         ''')
         layout = QVBoxLayout(self)
-        layout.setSpacing(4)
+        layout.setSpacing(6)
 
         title = QLabel("Today's Tasks")
         title.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         title.setStyleSheet('''
             color: #ffffff;
-            padding: 4px;
+            padding: 5px;
             background: rgba(100, 150, 255, 0.2);
-            border-radius: 4px;
+            border-radius: 5px;
             border-left: 3px solid #6496ff;
         ''')
         layout.addWidget(title)
@@ -270,7 +271,8 @@ class TasksWidget(QFrame):
         tasks = [
             ("Project work", False),
             ("Code review", True),
-            ("Meeting", False)
+            ("Meeting", False),
+            ("Documentation", False)
         ]
         
         for task_text, completed in tasks:
@@ -279,11 +281,11 @@ class TasksWidget(QFrame):
                 QFrame {
                     background: rgba(255, 255, 255, 0.05);
                     border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 4px;
-                    padding: 5px;
+                    border-radius: 5px;
+                    padding: 4px;
                     margin: 1px;
-                    min-height: 20px;
-                    max-height: 24px;
+                    min-height: 25px;
+                    max-height: 28px;
                 }
                 QFrame:hover {
                     background: rgba(255, 255, 255, 0.1);
@@ -291,32 +293,35 @@ class TasksWidget(QFrame):
             ''')
             
             task_layout = QHBoxLayout(task_container)
-            task_layout.setContentsMargins(6, 3, 6, 3)
+            task_layout.setContentsMargins(6, 4, 6, 4)
             task_layout.setSpacing(6)
             
-            checkbox = QCheckBox(task_text)
+            checkbox = QCheckBox()
             checkbox.setChecked(completed)
-            checkbox.setFont(QFont("Segoe UI", 8))
-            checkbox.setStyleSheet(f'''
-                QCheckBox {{
-                    color: {"#888888" if completed else "#ffffff"};
-                    text-decoration: {"line-through" if completed else "none"};
-                    spacing: 8px;
-                }}
-                QCheckBox::indicator {{
-                    width: 12px;
+            checkbox.setStyleSheet('''
+                QCheckBox::indicator {
+                    width: 14px;
                     height: 14px;
-                    border-radius: 6px;
+                    border-radius: 7px;
                     border: 2px solid #6496ff;
                     background-color: transparent;
-                }}
-                QCheckBox::indicator:checked {{
+                }
+                QCheckBox::indicator:checked {
                     background-color: #6496ff;
                     border: 2px solid #6496ff;
-                }}
+                }
             ''')
             
+            task_label = QLabel(task_text)
+            task_label.setFont(QFont("Segoe UI", 8))
+            task_label.setStyleSheet(f'''
+                color: {"#888888" if completed else "#ffffff"};
+                text-decoration: {"line-through" if completed else "none"};
+            ''')
+            task_label.setWordWrap(False)
+            
             task_layout.addWidget(checkbox)
+            task_layout.addWidget(task_label, 1)
             
             layout.addWidget(task_container)
 
@@ -366,8 +371,10 @@ class MyWindow(QMainWindow):
                 background: rgba(255, 255, 255, 0.1);
                 border-radius: 8px;
                 padding: 8px;
-            }            QPushButton:hover { 
+            }
+            QPushButton:hover { 
                 background: rgba(255, 255, 255, 0.2);
+                transform: scale(1.05);
             }
             QPushButton:pressed {
                 background: rgba(255, 255, 255, 0.3);
@@ -428,10 +435,10 @@ class MyWindow(QMainWindow):
                 background: rgba(0, 0, 0, 0.7);
                 border-radius: 12px;
             }
-        ''')        
+        ''')
         icons_layout = QVBoxLayout(icons_container)
-        icons_layout.setContentsMargins(8, 8, 8, 8)
-        icons_layout.setSpacing(6)
+        icons_layout.setContentsMargins(15, 15, 15, 15)
+        icons_layout.setSpacing(12)
 
         # Create icon containers with better styling
         for icon_path, tooltip, color in [
@@ -443,24 +450,23 @@ class MyWindow(QMainWindow):
             icon_frame.setStyleSheet(f'''
                 QFrame {{
                     background: rgba(255, 255, 255, 0.1);
-                    border: 1px solid {color};
-                    border-radius: 6px;
-                    padding: 4px;
+                    border: 2px solid {color};
+                    border-radius: 8px;
+                    padding: 8px;
                 }}
                 QFrame:hover {{
                     background: rgba(255, 255, 255, 0.2);
-                    border: 1px solid {color};
+                    border: 2px solid {color};
                 }}
             ''')
-            
             icon_frame.setToolTip(tooltip)
             
             icon_layout = QVBoxLayout(icon_frame)
-            icon_layout.setContentsMargins(2, 2, 2, 2)
+            icon_layout.setContentsMargins(4, 4, 4, 4)
             
             icon_label = QLabel()
             try:
-                icon_label.setPixmap(QPixmap(icon_path).scaled(20, 20, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+                icon_label.setPixmap(QPixmap(icon_path).scaled(24, 24, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
             except:
                 icon_label.setText("📊")
                 icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
