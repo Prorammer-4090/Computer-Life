@@ -3,12 +3,12 @@ import mediapipe as mp
 import numpy as np
 import time
 from scipy.spatial import distance as dist
-from google import genai
+import google.generativeai as genai
 from PIL import Image
 
 # Global variables
 GEMINI_API_KEY = "AIzaSyCxImEs_JzNLqajbSLC91QsOoh6heTenBs"
-client = genai.Client(api_key=GEMINI_API_KEY)
+client = genai.configure(api_key=GEMINI_API_KEY)
 
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(static_image_mode=False, min_detection_confidence=0.5, min_tracking_confidence=0.5)
@@ -95,7 +95,7 @@ while True:
     # FOR THE POSTURE PART
     pose_results = pose.process(rgb)
 
-    if count % 600 == 0:  
+    if count % 30 == 0:  
         posture = check_posture_with_gemini(frame)
         print(f"Posture: {posture}")
 

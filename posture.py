@@ -1,10 +1,10 @@
 import cv2
 from PIL import Image
-from google import genai
+import google.generativeai as genai
 
 # Initialize the Gemini client
 GEMINI_API_KEY = "AIzaSyCxImEs_JzNLqajbSLC91QsOoh6heTenBs"
-client = genai.Client(api_key=GEMINI_API_KEY)
+client = genai.configure(api_key=GEMINI_API_KEY)
 
 def check_posture_with_gemini(frame):
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
