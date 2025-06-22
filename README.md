@@ -1,4 +1,4 @@
-# BlurNout 👁️‍🗨️
+# BlurNout 
 
 **A Real-Time Health Monitoring Application for Computer Users**
 
