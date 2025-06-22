@@ -4,28 +4,28 @@
 
 BlurNout is an intelligent desktop application that monitors your health and productivity while you work on your computer. Using computer vision and AI, it tracks your posture, eye health, emotions, and work habits to provide real-time feedback and suggestions for maintaining better health during long computer sessions.
 
-## 🚀 Features
+##  Features
 
-### 📊 **Real-Time Health Monitoring**
+###  **Real-Time Health Monitoring**
 - **Blink Rate Detection**: Monitors your blinking frequency to prevent dry eyes
 - **Eye Distance Tracking**: Ensures you maintain proper distance from your screen (40cm+)
 - **Posture Analysis**: Uses Google Gemini AI to analyze and alert about poor posture
 - **Sitting Time Tracking**: Reminds you to take breaks after extended sitting periods
 - **Emotion Recognition**: Detects your emotional state and provides motivational feedback
 
-### 🍅 **Productivity Tools**
+###  **Productivity Tools**
 - **Pomodoro Timer**: Built-in focus timer with session tracking
 - **Task Management**: Create, complete, and track daily tasks
 - **Statistics Dashboard**: Comprehensive analytics with charts and progress tracking
 - **Focus Streak Monitoring**: Track your productivity streaks
 
-### 🎨 **Modern Interface**
+### **Modern Interface**
 - **Dark Theme UI**: Easy on the eyes for long usage sessions
 - **Real-Time Camera Feed**: Live video feed with health indicator overlays
 - **Animated Notifications**: Non-intrusive health alerts with 30-second throttling
 - **Statistics Overlay**: Beautiful charts and progress visualizations
 
-## 🛠️ Dependencies
+##  Dependencies
 
 ### **Core Dependencies**
 
@@ -101,7 +101,7 @@ pip install PyQt6 opencv-python mediapipe google-generativeai deepface cvzone nu
 GEMINI_API_KEY = "your-api-key-here"
 ```
 
-## 🚀 Usage
+##  Usage
 
 ### **Running the Application**
 ```bash
@@ -127,7 +127,7 @@ The application automatically monitors:
 - Health alerts appear as styled popup messages
 - Different notification types for various health metrics
 
-## 📁 Project Structure
+##  Project Structure
 
 ```
 BlurNout/
@@ -181,7 +181,7 @@ Uses Google's Gemini 2.0 Flash model to analyze camera feed and detect poor post
 - Sitting time limit: 60 minutes
 - Posture check interval: 5 minutes
 
-## 🤝 Contributing
+##  Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
@@ -189,11 +189,11 @@ Uses Google's Gemini 2.0 Flash model to analyze camera feed and detect poor post
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📄 License
+##  License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## 🆘 Support
+##  Support
 
 If you encounter any issues or have questions:
 1. Check the common issues section
@@ -201,7 +201,7 @@ If you encounter any issues or have questions:
 3. Ensure all dependencies are correctly installed
 4. Verify camera permissions are granted
 
-## 🏆 Acknowledgments
+##  Acknowledgments
 
 - **Google Gemini AI** for advanced posture analysis
 - **MediaPipe** for robust face and pose detection
