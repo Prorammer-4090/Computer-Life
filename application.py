@@ -19,6 +19,10 @@ from posture import check_posture_with_gemini
 from eyedistancescreen import eye_dist
 from sitting import sittingt
 from emotion_model import emote
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
 
 # Global variables
 GEMINI_API_KEY = "AIzaSyCxImEs_JzNLqajbSLC91QsOoh6heTenBs"
@@ -98,7 +102,7 @@ class StatsManager:
             "Current Focus Streak": str(self.stats.get('focus_streak', 0)),
             "Estimated Break Time": f"{self.stats.get('break_time', 0)}m"        }
 
-# Defines the overlay widget that displays statistics.
+# Defines the overlay widget that displays statistics with charts and modern UI
 class StatsOverlay(QWidget):
     def __init__(self, parent=None, stats_manager=None):
         super().__init__(parent)
@@ -117,112 +121,418 @@ class StatsOverlay(QWidget):
         self.animation.setEasingCurve(QEasingCurve.Type.InOutQuad)  # Set the easing curve for a smooth animation.
         
         # Main widget for the content of the overlay.
-        content_widget = QFrame(self)        # Set the style for the content widget using CSS-like syntax.
+        content_widget = QFrame(self)
+        # Set the style for the content widget using CSS-like syntax.
         content_widget.setStyleSheet("""
             background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 rgba(40, 40, 40, 0.90), stop:1 rgba(20, 20, 20, 0.90));
+                stop:0 rgba(30, 30, 30, 0.95), stop:1 rgba(10, 10, 10, 0.95));
             color: white;
             border-radius: 20px;
-            border: 2px solid rgba(100, 150, 255, 0.5);
+            border: 2px solid rgba(100, 150, 255, 0.6);
         """)
 
-        # Create a vertical layout for the content widget.
-        layout = QVBoxLayout(content_widget)
-        layout.setContentsMargins(50, 50, 50, 50)
-        layout.setSpacing(30)        # Create and style the title label.
-        title = QLabel("Analytics Dashboard")
-        title.setFont(QFont("Segoe UI", 24, QFont.Weight.Bold))
+        # Create the main layout for the content widget
+        main_layout = QVBoxLayout(content_widget)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(15)
+
+        # Title with improved styling
+        title_container = QFrame()
+        title_container.setStyleSheet("""
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                stop:0 rgba(100, 150, 255, 0.3), stop:1 rgba(50, 100, 200, 0.3));
+            border-radius: 15px;
+            padding: 15px;
+        """)
+        title_layout = QVBoxLayout(title_container)
+        
+        title = QLabel("📊 Analytics Dashboard")
+        title.setFont(QFont("Segoe UI", 28, QFont.Weight.Bold))
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)# Create a grid layout for the statistics.
-        stats_layout = QGridLayout()
-        stats_layout.setSpacing(20)
-        stats_layout.setColumnStretch(1, 1)  # Make the value column stretchable.
+        title.setStyleSheet("color: #ffffff; margin: 5px;")
+        
+        subtitle = QLabel("Complete overview of your productivity metrics")
+        subtitle.setFont(QFont("Segoe UI", 12))
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        subtitle.setStyleSheet("color: #cccccc; margin-bottom: 10px;")
+        
+        title_layout.addWidget(title)
+        title_layout.addWidget(subtitle)
+        main_layout.addWidget(title_container)
 
-        # Get real statistics from StatsManager
-        stats = self.stats_manager.get_stats_summary()
-        self.stats_labels = {}
+        # Create scroll area for the content
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                background: transparent;
+            }
+            QScrollBar:vertical {
+                background-color: rgba(255, 255, 255, 0.1);
+                width: 12px;
+                border-radius: 6px;
+            }
+            QScrollBar::handle:vertical {
+                background-color: rgba(100, 150, 255, 0.6);
+                border-radius: 6px;
+                min-height: 20px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background-color: rgba(100, 150, 255, 0.8);
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                border: none;
+                background: none;
+            }
+        """)
 
-        # Loop through the stats dictionary and create labels for each item.
-        row = 0
-        for name, value in stats.items():
-            name_label = QLabel(name)
-            name_label.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
-            value_label = QLabel(str(value))
-            value_label.setFont(QFont("Segoe UI", 14))
-            value_label.setAlignment(Qt.AlignmentFlag.AlignRight)
-            stats_layout.addWidget(name_label, row, 0)
-            stats_layout.addWidget(value_label, row, 1)
-            self.stats_labels[name] = value_label
-            row += 1
+        # Scrollable content widget
+        scroll_content = QWidget()
+        content_layout = QVBoxLayout(scroll_content)
+        content_layout.setContentsMargins(10, 10, 10, 10)
+        content_layout.setSpacing(20)
 
-        layout.addLayout(stats_layout)
-        layout.addStretch()  # Add stretch to push the close button to the bottom.
-          # Create and style the close button.
-        close_button = QPushButton("✕ Close")
-        close_button.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
+        # Create stats cards in a grid
+        self.create_stats_cards(content_layout)
+        
+        # Create charts section
+        self.create_charts_section(content_layout)
+
+        # Set scroll area content
+        scroll_area.setWidget(scroll_content)
+        main_layout.addWidget(scroll_area)
+
+        # Close button with improved styling
+        close_button = QPushButton("✕ Close Dashboard")
+        close_button.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
+        close_button.setFixedHeight(50)
         close_button.setStyleSheet("""
             QPushButton {
-                background: #ff4444;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #ff4444, stop:1 #cc2222);
                 border: none;
                 padding: 15px 30px;
-                border-radius: 12px;
+                border-radius: 15px;
                 color: white;
                 font-weight: bold;
             }
             QPushButton:hover {
-                background: #ff5555;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #ff5555, stop:1 #dd3333);
             }
             QPushButton:pressed {
-                background: #ee3333;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #ee3333, stop:1 #aa1111);
             }
         """)
         close_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        # Connect the button's clicked signal to the hide_overlay method.
         close_button.clicked.connect(self.hide_overlay)
-        layout.addWidget(close_button, alignment=Qt.AlignmentFlag.AlignCenter)        # Set the main layout for the StatsOverlay widget.
-        main_layout = QVBoxLayout(self)
-        main_layout.addWidget(content_widget)
-        self.setLayout(main_layout)
+        main_layout.addWidget(close_button, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        # Set the main layout for the StatsOverlay widget
+        overlay_layout = QVBoxLayout(self)
+        overlay_layout.addWidget(content_widget)
+        self.setLayout(overlay_layout)
         
         # Add update timer
         self.update_timer = QTimer()
         self.update_timer.timeout.connect(self.update_stats)
         self.update_timer.start(5000)  # Update every 5 seconds
 
+    def create_stats_cards(self, parent_layout):
+        """Create modern stats cards with icons and values"""
+        cards_container = QFrame()
+        cards_layout = QGridLayout(cards_container)
+        cards_layout.setSpacing(15)
+        
+        # Get real statistics from StatsManager
+        stats = self.stats_manager.get_stats_summary()
+        self.stats_labels = {}
+        
+        # Define card configurations with icons and colors
+        card_configs = [
+            ("Tasks Completed Today", "🎯", "#4CAF50", "tasks completed"),
+            ("Focus Time Today", "⏰", "#2196F3", "focus time"),
+            ("Total Tasks Completed", "📋", "#FF9800", "total tasks"),
+            ("Pomodoro Sessions", "🍅", "#9C27B0", "sessions"),
+            ("Current Focus Streak", "🔥", "#F44336", "streak"),
+            ("Estimated Break Time", "☕", "#607D8B", "break time")
+        ]
+        
+        for i, (stat_name, icon, color, description) in enumerate(card_configs):
+            card = self.create_stat_card(
+                stat_name, 
+                str(stats.get(stat_name, "0")), 
+                icon, 
+                color, 
+                description
+            )
+            row = i // 3
+            col = i % 3
+            cards_layout.addWidget(card, row, col)
+            
+        parent_layout.addWidget(cards_container)
+
+    def create_stat_card(self, title, value, icon, color, description):
+        """Create an individual stat card with modern design"""
+        card = QFrame()
+        card.setFixedSize(200, 120)
+        card.setStyleSheet(f"""
+            QFrame {{
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 rgba(255, 255, 255, 0.1), stop:1 rgba(255, 255, 255, 0.05));
+                border: 2px solid {color};
+                border-radius: 15px;
+                padding: 10px;
+            }}
+            QFrame:hover {{
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 rgba(255, 255, 255, 0.15), stop:1 rgba(255, 255, 255, 0.08));
+                border: 2px solid {color};
+            }}
+        """)
+        
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(5)
+        
+        # Icon and title row
+        top_layout = QHBoxLayout()
+        
+        icon_label = QLabel(icon)
+        icon_label.setFont(QFont("Segoe UI", 20))
+        icon_label.setStyleSheet(f"color: {color};")
+        
+        title_label = QLabel(title.replace(" ", "\n"))
+        title_label.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        title_label.setStyleSheet("color: #ffffff; line-height: 1.2;")
+        title_label.setWordWrap(True)
+        
+        top_layout.addWidget(icon_label)
+        top_layout.addWidget(title_label)
+        top_layout.addStretch()
+        
+        # Value
+        value_label = QLabel(value)
+        value_label.setFont(QFont("Segoe UI", 18, QFont.Weight.Bold))
+        value_label.setStyleSheet(f"color: {color}; margin: 5px;")
+        value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        # Description
+        desc_label = QLabel(description)
+        desc_label.setFont(QFont("Segoe UI", 8))
+        desc_label.setStyleSheet("color: #888888;")
+        desc_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        layout.addLayout(top_layout)
+        layout.addWidget(value_label)
+        layout.addWidget(desc_label)
+        
+        # Store reference for updates
+        self.stats_labels[title] = value_label
+        
+        return card
+
+    def create_charts_section(self, parent_layout):
+        """Create charts section with productivity visualizations"""
+        charts_title = QLabel("📈 Productivity Analytics")
+        charts_title.setFont(QFont("Segoe UI", 20, QFont.Weight.Bold))
+        charts_title.setStyleSheet("color: #ffffff; margin: 20px 0 10px 0;")
+        parent_layout.addWidget(charts_title)
+        
+        # Charts container
+        charts_container = QFrame()
+        charts_container.setStyleSheet("""
+            QFrame {
+                background: rgba(255, 255, 255, 0.05);
+                border-radius: 15px;
+                padding: 20px;
+            }
+        """)
+        charts_layout = QHBoxLayout(charts_container)
+        charts_layout.setSpacing(20)
+        
+        # Create pie chart for task completion
+        self.create_task_completion_chart(charts_layout)
+        
+        # Create progress bars for daily goals
+        self.create_progress_section(charts_layout)
+        
+        parent_layout.addWidget(charts_container)
+
+    def create_task_completion_chart(self, parent_layout):
+        """Create a pie chart showing task completion"""
+        chart_container = QFrame()
+        chart_container.setFixedSize(300, 250)
+        chart_container.setStyleSheet("""
+            QFrame {
+                background: rgba(0, 0, 0, 0.3);
+                border-radius: 10px;
+                padding: 10px;
+            }
+        """)
+        
+        layout = QVBoxLayout(chart_container)
+        
+        # Chart title
+        title = QLabel("Task Completion")
+        title.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
+        title.setStyleSheet("color: #ffffff; margin-bottom: 10px;")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title)
+        
+        # Create matplotlib figure
+        fig = Figure(figsize=(4, 3), facecolor='none')
+        canvas = FigureCanvas(fig)
+        canvas.setStyleSheet("background: transparent;")
+        
+        ax = fig.add_subplot(111)
+        ax.set_facecolor('none')
+        
+        # Data for pie chart
+        tasks_today = self.stats_manager.stats.get('tasks_completed_today', 0)
+        remaining = max(0, 8 - tasks_today)  # Assuming 8 tasks daily goal
+        
+        if tasks_today > 0 or remaining > 0:
+            labels = ['Completed', 'Remaining']
+            sizes = [tasks_today, remaining]
+            colors = ['#4CAF50', '#666666']
+            explode = (0.1, 0)  # explode completed slice
+            
+            ax.pie(sizes, explode=explode, labels=labels, colors=colors,
+                  autopct='%1.0f', startangle=90, textprops={'color': 'white', 'fontsize': 10})
+        else:
+            ax.text(0.5, 0.5, 'No data yet', transform=ax.transAxes, 
+                   ha='center', va='center', color='white', fontsize=12)
+        
+        ax.axis('equal')
+        fig.tight_layout()
+        
+        layout.addWidget(canvas)
+        parent_layout.addWidget(chart_container)
+
+    def create_progress_section(self, parent_layout):
+        """Create progress bars for daily goals"""
+        progress_container = QFrame()
+        progress_container.setFixedWidth(300)
+        progress_container.setStyleSheet("""
+            QFrame {
+                background: rgba(0, 0, 0, 0.3);
+                border-radius: 10px;
+                padding: 15px;
+            }
+        """)
+        
+        layout = QVBoxLayout(progress_container)
+        
+        # Progress section title
+        title = QLabel("Daily Goals Progress")
+        title.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
+        title.setStyleSheet("color: #ffffff; margin-bottom: 15px;")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title)
+        
+        # Progress bars data
+        progress_data = [
+            ("Tasks", self.stats_manager.stats.get('tasks_completed_today', 0), 8, "#4CAF50"),
+            ("Focus Time", self.stats_manager.stats.get('pomodoro_time_spent', 0) // 60, 120, "#2196F3"),  # minutes
+            ("Pomodoro Sessions", self.stats_manager.stats.get('total_pomodoro_sessions', 0), 4, "#9C27B0")
+        ]
+        
+        for label, current, target, color in progress_data:
+            self.create_progress_bar(layout, label, current, target, color)
+        
+        parent_layout.addWidget(progress_container)
+
+    def create_progress_bar(self, parent_layout, label, current, target, color):
+        """Create a single progress bar with label"""
+        container = QFrame()
+        container.setStyleSheet("margin: 5px 0;")
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 10)
+        layout.setSpacing(5)
+        
+        # Label with values
+        label_text = QLabel(f"{label}: {current}/{target}")
+        label_text.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
+        label_text.setStyleSheet("color: #ffffff;")
+        layout.addWidget(label_text)
+        
+        # Progress bar background
+        progress_bg = QFrame()
+        progress_bg.setFixedHeight(20)
+        progress_bg.setStyleSheet("""
+            QFrame {
+                background-color: rgba(255, 255, 255, 0.1);
+                border-radius: 10px;
+            }
+        """)
+        
+        # Progress bar fill
+        progress_fill = QFrame(progress_bg)
+        progress_value = min(100, (current / target * 100) if target > 0 else 0)
+        fill_width = int(270 * progress_value / 100)  # 270 is approximate width
+        progress_fill.setFixedSize(fill_width, 20)
+        progress_fill.setStyleSheet(f"""
+            QFrame {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 {color}, stop:1 {color}88);
+                border-radius: 10px;
+            }}
+        """)
+        
+        # Percentage label
+        percent_label = QLabel(f"{progress_value:.0f}%")
+        percent_label.setFont(QFont("Segoe UI", 10))
+        percent_label.setStyleSheet(f"color: {color}; margin-top: 2px;")
+        percent_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        
+        layout.addWidget(progress_bg)
+        layout.addWidget(percent_label)
+        parent_layout.addWidget(container)
+
     def update_stats(self):
-        """Reloads stats from the file and updates the labels."""
+        """Reloads stats from the file and updates all displays"""
         self.stats_manager.stats = self.stats_manager.load_stats()
         stats_summary = self.stats_manager.get_stats_summary()
+        
+        # Update stat cards
         for name, value in stats_summary.items():
             if name in self.stats_labels:
                 self.stats_labels[name].setText(str(value))
+        
+        # Note: In a more complex implementation, you would also update charts here
+        # For now, charts are updated when the overlay is shown
 
-    # This event is called when the widget is shown.
     def showEvent(self, event):
+        """Called when the widget is shown"""
         # Disconnect any existing connections to avoid conflicts
         try:
             self.animation.finished.disconnect()
         except:
             pass  # No connection to disconnect
             
-        # Configure and start the fade-in animation.
+        # Configure and start the fade-in animation
         self.animation.setStartValue(0.0)
         self.animation.setEndValue(1.0)
         self.animation.start()
         super().showEvent(event)
 
-    # This method is called to hide the overlay.
     def hide_overlay(self):
+        """Hide the overlay with fade-out animation"""
         # Disconnect any existing connections to avoid multiple connections
         try:
             self.animation.finished.disconnect()
         except:
             pass  # No connection to disconnect
         
-        # Configure and start the fade-out animation.
+        # Configure and start the fade-out animation
         self.animation.setStartValue(1.0)
         self.animation.setEndValue(0.0)
-        # Connect the animation's finished signal to the widget's hide method.
+        # Connect the animation's finished signal to the widget's hide method
         self.animation.finished.connect(self.hide)
         self.animation.start()
 
@@ -687,7 +997,7 @@ class MyWindow(QMainWindow):
         # Initialize stats manager first
         self.stats_manager = StatsManager()
           # Set the window title and initial geometry.
-        self.setWindowTitle("BlurNought")
+        self.setWindowTitle("BlurNout")
         self.setGeometry(300, 50, 900, 600)
         # Set the global style for the main window.
         self.setStyleSheet('''
@@ -738,7 +1048,7 @@ class MyWindow(QMainWindow):
         # Connect the button's clicked signal to show the hamburger menu.
         self.menu_button.clicked.connect(self.show_hamburger_menu)
           # Add title to top bar
-        title_label = QLabel("BlurNought")
+        title_label = QLabel("BlurNout")
         title_label.setFont(QFont("Segoe UI", 18, QFont.Weight.Bold))
         title_label.setStyleSheet('''
             color: #ffffff;
@@ -887,6 +1197,7 @@ class MyWindow(QMainWindow):
         self.last_posture_notification = 0
         self.last_emotion_notification = 0
         self.last_posture_check = 0  # For Gemini posture detection timing
+        self.last_shown_messages = {}  # Track when each specific message was last shown
         self.current_blink_rate = 0
         self.current_sitting_time = 0
         self.current_eye_distance = 50  # Default safe distance
@@ -938,7 +1249,7 @@ class MyWindow(QMainWindow):
         # Always create current_frame for use in other functions
         current_frame = frame.copy()        
         elapsed = time.time() - self.interval_start_time
-        if elapsed >= 20:
+        if elapsed >= 4:
             eye_distance = eye_dist(current_frame)
             blink_rate = (self.interval_blink_count / elapsed) * 60
             self.current_blink_rate = blink_rate
@@ -949,12 +1260,12 @@ class MyWindow(QMainWindow):
             
         # Check posture with Gemini every 5 minutes to avoid lag
         current_time = time.time()
-        if current_time - self.last_posture_check >= 300:  # 5 minutes = 300 seconds
+        if current_time - self.last_posture_check >= 10:  # 10 seconds
             posture = check_posture_with_gemini(current_frame)
             self.current_posture = posture
             self.last_posture_check = current_time
               # Check sitting time every 30 frames (more frequent as it's not using AI)
-        if self.count % 30 == 0:
+        if self.count % 10 == 0:
             sitting_time = sittingt(current_frame)
             self.current_sitting_time = sitting_time
             sitting_time_minutes = sitting_time / 60  # Convert seconds to minutes
@@ -1074,9 +1385,20 @@ class MyWindow(QMainWindow):
         if hasattr(self, 'cap'):
             self.cap.release()
         super().closeEvent(event)    
-        
     def show_notification(self, title, message):
-        """Show a notification popup using PyQt6 QMessageBox"""
+        """Show a notification popup using PyQt6 QMessageBox with 30-second throttling"""
+        current_time = time.time()
+        message_key = f"{title}:{message}"  # Create unique key for this specific message
+        
+        # Check if this exact message was shown within the last 30 seconds
+        if message_key in self.last_shown_messages:
+            time_since_last = current_time - self.last_shown_messages[message_key]
+            if time_since_last < 5:  # 5 seconds throttling
+                return  # Don't show the notification, it's too soon
+        
+        # Update the timestamp for this message
+        self.last_shown_messages[message_key] = current_time
+        
         msg_box = QMessageBox(self)
         msg_box.setWindowTitle(title)
         msg_box.setText(message)
@@ -1107,13 +1429,12 @@ class MyWindow(QMainWindow):
             }
         """)
         msg_box.exec()
-
     def check_notifications(self):
         """Check all health conditions and show notifications if needed"""
         current_time = time.time()
         
         # Check blink rate (every 2 minutes minimum)
-        if (self.current_blink_rate < 6 and 
+        if (self.current_blink_rate is not None and self.current_blink_rate < 6 and 
             current_time - self.last_blink_notification > 120 and current_time > 30):  # 2 minutes
             self.show_notification(
                 "Blink Rate Alert", 
@@ -1122,7 +1443,7 @@ class MyWindow(QMainWindow):
             self.last_blink_notification = current_time
         
         # Check sitting time (every 5 minutes minimum)
-        if (self.current_sitting_time > 3600 and  # 60 minutes in seconds
+        if (self.current_sitting_time is not None and self.current_sitting_time > 3600 and  # 60 minutes in seconds
             current_time - self.last_sitting_notification > 300):  # 5 minutes
             self.show_notification(
                 "Break Time Alert", 
@@ -1131,8 +1452,7 @@ class MyWindow(QMainWindow):
             self.last_sitting_notification = current_time
         
         # Check eye distance (every 2 minutes minimum)
-        if (self.current_eye_distance < 40 and 
-            current_time - self.last_eye_distance_notification > 120 and current_time > 30):  # 2 minutes
+        if (self.current_eye_distance is not None and self.current_eye_distance < 40): 
             self.show_notification(
                 "Eye Distance Alert", 
                 "You're sitting too close to the screen! Please move back to at least 40cm distance to protect your eyes."
@@ -1140,11 +1460,12 @@ class MyWindow(QMainWindow):
             self.last_eye_distance_notification = current_time
         
         # Check posture (track bad posture duration)
-        if "bad" in self.current_posture.lower() or "poor" in self.current_posture.lower() and current_time > 30:
+        if (self.current_posture is not None and 
+            ("bad" in self.current_posture.lower() or "poor" in self.current_posture.lower()) and current_time > 30):
             if self.bad_posture_start_time is None:
                 self.bad_posture_start_time = current_time
-            elif (current_time - self.bad_posture_start_time > 900 and  # 15 minutes
-                  current_time - self.last_posture_notification > 900):  # Don't spam
+            elif (current_time - self.bad_posture_start_time > 600 and  # 10 minutes
+                  current_time - self.last_posture_notification > 600):  # Don't spam
                 self.show_notification(
                     "Posture Alert", 
                     "You've had poor posture for 15 minutes! Please straighten your back and adjust your seating position."
@@ -1152,9 +1473,9 @@ class MyWindow(QMainWindow):
                 self.last_posture_notification = current_time
         else:
             self.bad_posture_start_time = None  # Reset if posture is good
-        
-        # Check emotions (every 10 minutes minimum for positive/negative feedback)
-        if current_time - self.last_emotion_notification > 600 and current_time > 30:  # 10 minutes
+          # Check emotions (every 10 minutes minimum for positive/negative feedback)
+        if (self.current_emotion is not None and 
+            current_time - self.last_emotion_notification > 600 and current_time > 30):  # 10 minutes
             emotion_lower = self.current_emotion.lower()
             
             if "happy" in emotion_lower or "joy" in emotion_lower or "smile" in emotion_lower:
