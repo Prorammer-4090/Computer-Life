@@ -1,0 +1,5 @@
+Hello|False
+ok|False
+bye|False
+yraefgak|False
+57r75r|False
