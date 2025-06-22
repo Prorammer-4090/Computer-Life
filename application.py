@@ -1,7 +1,7 @@
 # Import necessary modules from PyQt6 for GUI development.
 from PyQt6 import QtWidgets
 from PyQt6.QtCore import Qt, QSize, QPropertyAnimation, QEasingCurve, QTimer
-from PyQt6.QtGui import QFont, QIcon, QPixmap, QPainter, QColor, QFontDatabase
+from PyQt6.QtGui import QFont, QIcon, QPixmap, QPainter, QColor, QFontDatabase, QImage
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QLabel, QPushButton,
                              QWidget, QVBoxLayout, QHBoxLayout, QFrame, QGraphicsOpacityEffect, 
                              QGridLayout, QCheckBox, QScrollArea, QLineEdit, QDialog, QMenu)
@@ -9,6 +9,20 @@ import sys
 import os
 import json
 from datetime import datetime
+import cv2
+import mediapipe as mp
+import numpy as np
+import time
+from scipy.spatial import distance as dist
+import google.generativeai as genai
+from posture import check_posture_with_gemini
+from eyedistancescreen import eye_dist
+from sitting import sittingt
+from emotion_model import emote
+
+# Global variables
+GEMINI_API_KEY = "AIzaSyCxImEs_JzNLqajbSLC91QsOoh6heTenBs"
+genai.configure(api_key=GEMINI_API_KEY)
 
 # Statistics management class
 class StatsManager:
@@ -683,6 +697,7 @@ class MyWindow(QMainWindow):
         self.setFont(QFont("Segoe UI", 10))
         # Initialize the user interface.
         self.initUI()
+        self.initCamera()
 
     # Sets up the user interface of the main window.
     def initUI(self):
@@ -772,6 +787,7 @@ class MyWindow(QMainWindow):
         icons_layout.setContentsMargins(8, 8, 8, 8)
         icons_layout.setSpacing(6)
 
+        self.icon_frames = []
         # Create icon containers with better styling
         for icon_path, tooltip, color in [
             ("img/posture.png", "Posture: Good", "#4CAF50"),
@@ -806,6 +822,7 @@ class MyWindow(QMainWindow):
             
             icon_layout.addWidget(icon_label)
             icons_layout.addWidget(icon_frame)
+            self.icon_frames.append(icon_frame)
 
         icons_layout.addStretch()
         camera_container_layout.addWidget(icons_container, 0, 0, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
@@ -836,6 +853,99 @@ class MyWindow(QMainWindow):
         
         # Add some spacing at the bottom
         side_panel_layout.addStretch()
+
+    def initCamera(self):
+        self.cap = cv2.VideoCapture(0)
+        if not self.cap.isOpened():
+            self.camera_feed.setText("Error: Could not open camera.")
+            return
+
+        self.camera_timer = QTimer(self)
+        self.camera_timer.timeout.connect(self.update_frame)
+        self.camera_timer.start(30)  # ~33 FPS
+
+        # Mediapipe
+        self.mp_face_mesh = mp.solutions.face_mesh
+        self.face_mesh = self.mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1, refine_landmarks=True)
+
+        # Analysis variables
+        self.count = 0
+        self.LEFT_EYE_IDX = [33, 160, 158, 133, 153, 144]
+        self.RIGHT_EYE_IDX = [362, 385, 387, 263, 373, 380]
+        self.blink_thresh = 0.21
+        self.succ_frame = 2
+        self.count_frame = 0
+        self.interval_start_time = time.time()
+        self.interval_blink_count = 0
+
+    def calculate_EAR(self, eye):
+        y1 = dist.euclidean(eye[1], eye[5])
+        y2 = dist.euclidean(eye[2], eye[4])
+        x1 = dist.euclidean(eye[0], eye[3])
+        EAR = (y1 + y2) / (2.0 * x1)
+        return EAR
+
+    def update_frame(self):
+        ret, frame = self.cap.read()
+        if not ret:
+            return
+
+        frame = cv2.flip(frame, 1)
+        if frame is None:
+            print("None")
+        h, w, c = frame.shape
+        
+        self.count += 1
+        
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        results = self.face_mesh.process(rgb_frame)
+        if results.multi_face_landmarks:
+            for face_landmarks in results.multi_face_landmarks:
+                left_eye = [(int(face_landmarks.landmark[i].x * w), int(face_landmarks.landmark[i].y * h)) for i in self.LEFT_EYE_IDX]
+                right_eye = [(int(face_landmarks.landmark[i].x * w), int(face_landmarks.landmark[i].y * h)) for i in self.RIGHT_EYE_IDX]
+                
+                for pt in left_eye:
+                    cv2.circle(frame, pt, 2, (0,255,0), -1)
+                for pt in right_eye:
+                    cv2.circle(frame, pt, 2, (0,255,0), -1)
+
+                left_EAR = self.calculate_EAR(left_eye)
+                right_EAR = self.calculate_EAR(right_eye)
+                avg_EAR = (left_EAR + right_EAR) / 2.0
+
+                if avg_EAR < self.blink_thresh:
+                    self.count_frame += 1
+                else:
+                    if self.count_frame >= self.succ_frame:
+                        self.interval_blink_count += 1
+                    self.count_frame = 0
+        
+        elapsed = time.time() - self.interval_start_time
+        if elapsed >= 20:
+            blink_rate = (self.interval_blink_count / elapsed) * 60
+            print(f"Blink Rate: {blink_rate:.2f} BPM")
+            self.interval_blink_count = 0
+            self.interval_start_time = time.time()
+            
+        current_frame = frame.copy()
+
+        if self.count % 30 == 0:
+            posture = check_posture_with_gemini(current_frame)
+            self.icon_frames[0].setToolTip(f"Posture: {posture}")
+            sitting_time = sittingt(current_frame)
+            print(f"Sitting Time: {sitting_time} seconds")
+            emotion = emote(current_frame)
+            self.icon_frames[2].setToolTip(f"Emotion: {emotion}")
+
+        if self.count % 120 == 0:
+            eye_distance = eye_dist(current_frame)
+            self.icon_frames[1].setToolTip(f"Eye Distance: {eye_distance} cm")
+
+        display_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        qt_image = QImage(display_frame.data, w, h, c * w, QImage.Format.Format_RGB888)
+        pixmap = QPixmap.fromImage(qt_image)
+        self.camera_feed.setPixmap(pixmap.scaled(self.camera_feed.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
 
     # Creates a menu icon programmatically using QPainter.
     def create_menu_icon(self):
@@ -916,6 +1026,8 @@ class MyWindow(QMainWindow):
     
     # Close the application
     def close_application(self):
+        if hasattr(self, 'cap'):
+            self.cap.release()
         self.close()
 
     # Shows or hides the statistics overlay.
@@ -933,6 +1045,11 @@ class MyWindow(QMainWindow):
             if central_widget:
                 self.stats_overlay.setGeometry(central_widget.geometry())
         super().resizeEvent(event)
+
+    def closeEvent(self, event):
+        if hasattr(self, 'cap'):
+            self.cap.release()
+        super().closeEvent(event)
 
 # Main function to run the application.
 def window():

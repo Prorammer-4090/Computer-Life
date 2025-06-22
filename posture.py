@@ -4,18 +4,20 @@ import google.generativeai as genai
 
 # Initialize the Gemini client
 GEMINI_API_KEY = "AIzaSyCxImEs_JzNLqajbSLC91QsOoh6heTenBs"
-client = genai.configure(api_key=GEMINI_API_KEY)
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel('gemini-2.0-flash')
 
 def check_posture_with_gemini(frame):
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     pil_img = Image.fromarray(rgb_frame)
+    if pil_img is None:
+        print("None")
     prompt = (
         "Is the person in this image standing or sitting with good posture (erect/tall) or bad posture (slouching)? "
         "Reply with only GOOD or BAD. GOOD means standing or sitting erect/tall. BAD means slouching."
     )
     try:
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
+        response = model.generate_content(
             contents=[prompt, pil_img]
         )
         answer = response.text.strip().upper()

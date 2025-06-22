@@ -1,5 +1,6 @@
 {
-  "tasks_completed_today": 0,
+  "tasks_completed_today": 5,
   "pomodoro_time_spent": 0,
-  "last_updated": "2025-06-22"
+  "last_updated": "2025-06-22",
+  "total_tasks_completed": 5
 }
