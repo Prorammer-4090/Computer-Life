@@ -62,7 +62,7 @@ BlurNout is an intelligent desktop application that monitors your health and pro
 - **time** - Time-related functions (built-in)
 - **datetime** - Date and time manipulation (built-in)
 
-## 📦 Installation
+##  Installation
 
 ### **Prerequisites**
 - Python 3.8 or higher
