@@ -4,7 +4,7 @@ from PyQt6.QtCore import Qt, QSize, QPropertyAnimation, QEasingCurve, QTimer
 from PyQt6.QtGui import QFont, QIcon, QPixmap, QPainter, QColor, QFontDatabase, QImage
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QLabel, QPushButton,
                              QWidget, QVBoxLayout, QHBoxLayout, QFrame, QGraphicsOpacityEffect, 
-                             QGridLayout, QCheckBox, QScrollArea, QLineEdit, QDialog, QMenu)
+                             QGridLayout, QCheckBox, QScrollArea, QLineEdit, QDialog, QMenu, QMessageBox)
 import sys
 import os
 import json
@@ -73,9 +73,9 @@ class StatsManager:
         self.stats['total_tasks_completed'] = self.stats.get('total_tasks_completed', 0) + 1
         self.save_stats()
     
-    def add_pomodoro_time(self, minutes):
-        """Add time spent in pomodoro sessions"""
-        self.stats['pomodoro_time_spent'] += minutes
+    def add_pomodoro_time_in_seconds(self, seconds):
+        """Add time spent in pomodoro sessions in seconds"""
+        self.stats['pomodoro_time_spent'] = self.stats.get('pomodoro_time_spent', 0) + seconds
         self.save_stats()
     
     def complete_pomodoro_session(self):
@@ -86,9 +86,9 @@ class StatsManager:
     
     def get_stats_summary(self):
         """Get formatted statistics summary"""
-        focus_time = self.stats.get('pomodoro_time_spent', 0)
-        focus_hours = focus_time // 60
-        focus_mins = focus_time % 60
+        focus_time_seconds = self.stats.get('pomodoro_time_spent', 0)
+        focus_hours = focus_time_seconds // 3600
+        focus_mins = (focus_time_seconds % 3600) // 60
         
         return {
             "Tasks Completed Today": str(self.stats.get('tasks_completed_today', 0)),
@@ -96,8 +96,8 @@ class StatsManager:
             "Total Tasks Completed": str(self.stats.get('total_tasks_completed', 0)),
             "Pomodoro Sessions": str(self.stats.get('total_pomodoro_sessions', 0)),
             "Current Focus Streak": str(self.stats.get('focus_streak', 0)),
-            "Estimated Break Time": f"{self.stats.get('break_time', 0)}m"
-        }
+            "Estimated Break Time": f"{self.stats.get('break_time', 0)}m"        }
+
 # Defines the overlay widget that displays statistics.
 class StatsOverlay(QWidget):
     def __init__(self, parent=None, stats_manager=None):
@@ -117,78 +117,85 @@ class StatsOverlay(QWidget):
         self.animation.setEasingCurve(QEasingCurve.Type.InOutQuad)  # Set the easing curve for a smooth animation.
         
         # Main widget for the content of the overlay.
-        content_widget = QFrame(self)
-        # Set the style for the content widget using CSS-like syntax.
+        content_widget = QFrame(self)        # Set the style for the content widget using CSS-like syntax.
         content_widget.setStyleSheet("""
             background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                stop:0 rgba(40, 40, 40, 0.98), stop:1 rgba(20, 20, 20, 0.98));
+                stop:0 rgba(40, 40, 40, 0.90), stop:1 rgba(20, 20, 20, 0.90));
             color: white;
             border-radius: 20px;
-            border: 2px solid rgba(100, 150, 255, 0.3);
+            border: 2px solid rgba(100, 150, 255, 0.5);
         """)
 
         # Create a vertical layout for the content widget.
         layout = QVBoxLayout(content_widget)
         layout.setContentsMargins(50, 50, 50, 50)
-        layout.setSpacing(30)
-
-        # Create and style the title label.
-        title = QLabel("Overall Statistics")
-        title.setFont(QFont("Segoe UI", 28, QFont.Weight.Bold))
+        layout.setSpacing(30)        # Create and style the title label.
+        title = QLabel("Analytics Dashboard")
+        title.setFont(QFont("Segoe UI", 24, QFont.Weight.Bold))
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)        # Create a grid layout for the statistics.
+        layout.addWidget(title)# Create a grid layout for the statistics.
         stats_layout = QGridLayout()
         stats_layout.setSpacing(20)
         stats_layout.setColumnStretch(1, 1)  # Make the value column stretchable.
 
         # Get real statistics from StatsManager
         stats = self.stats_manager.get_stats_summary()
+        self.stats_labels = {}
 
         # Loop through the stats dictionary and create labels for each item.
         row = 0
         for name, value in stats.items():
             name_label = QLabel(name)
             name_label.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
-            value_label = QLabel(value)
+            value_label = QLabel(str(value))
             value_label.setFont(QFont("Segoe UI", 14))
             value_label.setAlignment(Qt.AlignmentFlag.AlignRight)
             stats_layout.addWidget(name_label, row, 0)
             stats_layout.addWidget(value_label, row, 1)
+            self.stats_labels[name] = value_label
             row += 1
 
         layout.addLayout(stats_layout)
         layout.addStretch()  # Add stretch to push the close button to the bottom.
-        
-        # Create and style the close button.
+          # Create and style the close button.
         close_button = QPushButton("✕ Close")
         close_button.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
         close_button.setStyleSheet("""
             QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #ff4444, stop:1 #cc3333);
+                background: #ff4444;
                 border: none;
                 padding: 15px 30px;
                 border-radius: 12px;
                 color: white;
-                font-weight: bold;            }
+                font-weight: bold;
+            }
             QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #ff5555, stop:1 #dd4444);
+                background: #ff5555;
             }
             QPushButton:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #ee3333, stop:1 #bb2222);
+                background: #ee3333;
             }
         """)
         close_button.setCursor(Qt.CursorShape.PointingHandCursor)
         # Connect the button's clicked signal to the hide_overlay method.
         close_button.clicked.connect(self.hide_overlay)
-        layout.addWidget(close_button, alignment=Qt.AlignmentFlag.AlignCenter)
-
-        # Set the main layout for the StatsOverlay widget.
+        layout.addWidget(close_button, alignment=Qt.AlignmentFlag.AlignCenter)        # Set the main layout for the StatsOverlay widget.
         main_layout = QVBoxLayout(self)
         main_layout.addWidget(content_widget)
         self.setLayout(main_layout)
+        
+        # Add update timer
+        self.update_timer = QTimer()
+        self.update_timer.timeout.connect(self.update_stats)
+        self.update_timer.start(5000)  # Update every 5 seconds
+
+    def update_stats(self):
+        """Reloads stats from the file and updates the labels."""
+        self.stats_manager.stats = self.stats_manager.load_stats()
+        stats_summary = self.stats_manager.get_stats_summary()
+        for name, value in stats_summary.items():
+            if name in self.stats_labels:
+                self.stats_labels[name].setText(str(value))
 
     # This event is called when the widget is shown.
     def showEvent(self, event):
@@ -320,12 +327,12 @@ class PomodoroTimer(QFrame):
         self.time_left -= 1
         mins, secs = divmod(self.time_left, 60)
         self.time_label.setText(f"{mins:02d}:{secs:02d}")
+        self.stats_manager.add_pomodoro_time_in_seconds(1)
         if self.time_left == 0:
             self.timer.stop()
             self.play_pause_button.setText("▶")
             # Track completed pomodoro session
             self.stats_manager.complete_pomodoro_session()
-            self.stats_manager.add_pomodoro_time(self.original_time // 60)
 
     def start_stop(self):
         if self.timer.isActive():
@@ -679,9 +686,8 @@ class MyWindow(QMainWindow):
         super(MyWindow, self).__init__()
         # Initialize stats manager first
         self.stats_manager = StatsManager()
-        
-        # Set the window title and initial geometry.
-        self.setWindowTitle("Emotion Detector Pro")
+          # Set the window title and initial geometry.
+        self.setWindowTitle("BlurNought")
         self.setGeometry(300, 50, 900, 600)
         # Set the global style for the main window.
         self.setStyleSheet('''
@@ -731,9 +737,8 @@ class MyWindow(QMainWindow):
         self.menu_button.setCursor(Qt.CursorShape.PointingHandCursor)
         # Connect the button's clicked signal to show the hamburger menu.
         self.menu_button.clicked.connect(self.show_hamburger_menu)
-        
-        # Add title to top bar
-        title_label = QLabel("Emotion Detector Pro")
+          # Add title to top bar
+        title_label = QLabel("BlurNought")
         title_label.setFont(QFont("Segoe UI", 18, QFont.Weight.Bold))
         title_label.setStyleSheet('''
             color: #ffffff;
@@ -866,9 +871,7 @@ class MyWindow(QMainWindow):
 
         # Mediapipe
         self.mp_face_mesh = mp.solutions.face_mesh
-        self.face_mesh = self.mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1, refine_landmarks=True)
-
-        # Analysis variables
+        self.face_mesh = self.mp_face_mesh.FaceMesh(static_image_mode=False, max_num_faces=1, refine_landmarks=True)        # Analysis variables
         self.count = 0
         self.LEFT_EYE_IDX = [33, 160, 158, 133, 153, 144]
         self.RIGHT_EYE_IDX = [362, 385, 387, 263, 373, 380]
@@ -876,7 +879,19 @@ class MyWindow(QMainWindow):
         self.succ_frame = 2
         self.count_frame = 0
         self.interval_start_time = time.time()
-        self.interval_blink_count = 0
+        self.interval_blink_count = 0        # Notification tracking variables
+        self.last_blink_notification = 0
+        self.last_sitting_notification = 0
+        self.last_eye_distance_notification = time.time()
+        self.bad_posture_start_time = None
+        self.last_posture_notification = 0
+        self.last_emotion_notification = 0
+        self.last_posture_check = 0  # For Gemini posture detection timing
+        self.current_blink_rate = 0
+        self.current_sitting_time = 0
+        self.current_eye_distance = 50  # Default safe distance
+        self.current_posture = "Good"
+        self.current_emotion = "Neutral"
 
     def calculate_EAR(self, eye):
         y1 = dist.euclidean(eye[1], eye[5])
@@ -912,35 +927,44 @@ class MyWindow(QMainWindow):
 
                 left_EAR = self.calculate_EAR(left_eye)
                 right_EAR = self.calculate_EAR(right_eye)
-                avg_EAR = (left_EAR + right_EAR) / 2.0
-
+                avg_EAR = (left_EAR + right_EAR) / 2.0                
                 if avg_EAR < self.blink_thresh:
                     self.count_frame += 1
                 else:
                     if self.count_frame >= self.succ_frame:
                         self.interval_blink_count += 1
                     self.count_frame = 0
-        
+                    
+        # Always create current_frame for use in other functions
+        current_frame = frame.copy()        
         elapsed = time.time() - self.interval_start_time
         if elapsed >= 20:
+            eye_distance = eye_dist(current_frame)
             blink_rate = (self.interval_blink_count / elapsed) * 60
-            print(f"Blink Rate: {blink_rate:.2f} BPM")
+            self.current_blink_rate = blink_rate
+            self.current_eye_distance = eye_distance
+            self.icon_frames[1].setToolTip(f"Blink Rate: {blink_rate:.2f} BPM\nEye Distance: {eye_distance} cm")
             self.interval_blink_count = 0
             self.interval_start_time = time.time()
             
-        current_frame = frame.copy()
-
-        if self.count % 30 == 0:
+        # Check posture with Gemini every 5 minutes to avoid lag
+        current_time = time.time()
+        if current_time - self.last_posture_check >= 300:  # 5 minutes = 300 seconds
             posture = check_posture_with_gemini(current_frame)
-            self.icon_frames[0].setToolTip(f"Posture: {posture}")
+            self.current_posture = posture
+            self.last_posture_check = current_time
+              # Check sitting time every 30 frames (more frequent as it's not using AI)
+        if self.count % 30 == 0:
             sitting_time = sittingt(current_frame)
-            print(f"Sitting Time: {sitting_time} seconds")
+            self.current_sitting_time = sitting_time
+            sitting_time_minutes = sitting_time / 60  # Convert seconds to minutes
+            self.icon_frames[0].setToolTip(f"Posture: {self.current_posture}\nSitting Time: {sitting_time_minutes:.1f} minutes")
             emotion = emote(current_frame)
+            self.current_emotion = emotion
             self.icon_frames[2].setToolTip(f"Emotion: {emotion}")
 
-        if self.count % 120 == 0:
-            eye_distance = eye_dist(current_frame)
-            self.icon_frames[1].setToolTip(f"Eye Distance: {eye_distance} cm")
+        # Check for notifications
+        self.check_notifications()
 
         display_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         qt_image = QImage(display_frame.data, w, h, c * w, QImage.Format.Format_RGB888)
@@ -1010,18 +1034,18 @@ class MyWindow(QMainWindow):
         # Quit action
         quit_action = menu.addAction("❌ Quit Application")
         quit_action.triggered.connect(self.close_application)
-        
-        # Show menu at button position
+          # Show menu at button position
         button_rect = self.menu_button.geometry()
         menu_pos = self.menu_button.mapToGlobal(button_rect.bottomLeft())
         menu.exec(menu_pos)
-    
-    # Show the statistics overlay
     def show_stats_overlay(self):
-        # Set the geometry of the overlay to match the central widget's geometry.
+        # Update stats before showing
+        self.stats_overlay.update_stats()
+        # Position the overlay to cover the central widget area
         central_widget = self.centralWidget()
         if central_widget:
             self.stats_overlay.setGeometry(central_widget.geometry())
+        # Show the overlay with fade-in animation
         self.stats_overlay.show()
     
     # Close the application
@@ -1049,7 +1073,104 @@ class MyWindow(QMainWindow):
     def closeEvent(self, event):
         if hasattr(self, 'cap'):
             self.cap.release()
-        super().closeEvent(event)
+        super().closeEvent(event)    
+        
+    def show_notification(self, title, message):
+        """Show a notification popup using PyQt6 QMessageBox"""
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg_box.setStyleSheet("""
+            QMessageBox {
+                background-color: #2b2b2b;
+                color: white;
+                border: 2px solid #4a4a4a;
+                border-radius: 8px;
+            }
+            QMessageBox QPushButton {
+                background-color: #007acc;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-size: 14px;
+                font-weight: bold;
+                min-width: 80px;
+            }
+            QMessageBox QPushButton:hover {
+                background-color: #005a9e;
+            }
+            QMessageBox QPushButton:pressed {
+                background-color: #004080;
+            }
+        """)
+        msg_box.exec()
+
+    def check_notifications(self):
+        """Check all health conditions and show notifications if needed"""
+        current_time = time.time()
+        
+        # Check blink rate (every 2 minutes minimum)
+        if (self.current_blink_rate < 6 and 
+            current_time - self.last_blink_notification > 120 and current_time > 30):  # 2 minutes
+            self.show_notification(
+                "Blink Rate Alert", 
+                "Your blink rate is too low! Please close your eyes and blink more often to keep them moist."
+            )
+            self.last_blink_notification = current_time
+        
+        # Check sitting time (every 5 minutes minimum)
+        if (self.current_sitting_time > 3600 and  # 60 minutes in seconds
+            current_time - self.last_sitting_notification > 300):  # 5 minutes
+            self.show_notification(
+                "Break Time Alert", 
+                "You've been sitting for over an hour! Please take a break and move around for at least 2 minutes."
+            )
+            self.last_sitting_notification = current_time
+        
+        # Check eye distance (every 2 minutes minimum)
+        if (self.current_eye_distance < 40 and 
+            current_time - self.last_eye_distance_notification > 120 and current_time > 30):  # 2 minutes
+            self.show_notification(
+                "Eye Distance Alert", 
+                "You're sitting too close to the screen! Please move back to at least 40cm distance to protect your eyes."
+            )
+            self.last_eye_distance_notification = current_time
+        
+        # Check posture (track bad posture duration)
+        if "bad" in self.current_posture.lower() or "poor" in self.current_posture.lower() and current_time > 30:
+            if self.bad_posture_start_time is None:
+                self.bad_posture_start_time = current_time
+            elif (current_time - self.bad_posture_start_time > 900 and  # 15 minutes
+                  current_time - self.last_posture_notification > 900):  # Don't spam
+                self.show_notification(
+                    "Posture Alert", 
+                    "You've had poor posture for 15 minutes! Please straighten your back and adjust your seating position."
+                )
+                self.last_posture_notification = current_time
+        else:
+            self.bad_posture_start_time = None  # Reset if posture is good
+        
+        # Check emotions (every 10 minutes minimum for positive/negative feedback)
+        if current_time - self.last_emotion_notification > 600 and current_time > 30:  # 10 minutes
+            emotion_lower = self.current_emotion.lower()
+            
+            if "happy" in emotion_lower or "joy" in emotion_lower or "smile" in emotion_lower:
+                self.show_notification(
+                    "Great Work!", 
+                    "You're looking happy and positive! Keep up the excellent work! 😊"
+                )
+                self.last_emotion_notification = current_time
+            
+            elif ("sad" in emotion_lower or "stress" in emotion_lower or 
+                  "angry" in emotion_lower or "frustrated" in emotion_lower):
+                self.show_notification(
+                    "Stay Strong!", 
+                    "Challenges are temporary, but your strength is permanent. Take a deep breath - this too shall pass! 💪"
+                )
+                self.last_emotion_notification = current_time
 
 # Main function to run the application.
 def window():
