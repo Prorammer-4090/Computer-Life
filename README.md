@@ -42,6 +42,7 @@ BlurNout is an intelligent desktop application that monitors your health and pro
 - **DeepFace** - Emotion recognition and facial analysis
 - **CVZone** - Computer vision utilities
   - `cvzone.FaceMeshModule` - Face mesh detection
+  - tensorflow - AI trainer
 
 #### **Data Processing & Analysis**
 - **NumPy (`numpy`)** - Numerical computations
@@ -146,7 +147,7 @@ BlurNout/
 └── README.md              # This file
 ```
 
-## 🎯 Key Features Explained
+##  Key Features Explained
 
 ### **AI-Powered Posture Detection**
 Uses Google's Gemini 2.0 Flash model to analyze camera feed and detect poor posture in real-time.
@@ -210,4 +211,4 @@ If you encounter any issues or have questions:
 
 ---
 
-**Stay healthy while you code! 💻✨**
+**Stay healthy while you code! **
